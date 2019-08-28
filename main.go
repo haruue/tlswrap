@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
-	"golang.org/x/net/proxy"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -70,16 +69,12 @@ func main() {
 		}
 	}
 
-	context.dialer = proxy.Direct
 	if config.proxy != "" {
 		proxyUrl, err := url.Parse(config.proxy)
 		if err != nil {
 			log.Fatalf("fatal: cannot parse proxy %s as a url: %v\n", config.proxy, err)
 		}
-		context.dialer, err = proxy.FromURL(proxyUrl, proxy.Direct)
-		if err != nil {
-			log.Fatalf("fatal: cannot create proxy dialer from url %s: %v\n", config.proxy, err)
-		}
+		context.proxyUrl = proxyUrl
 	}
 
 	context.start()

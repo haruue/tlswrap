@@ -2,15 +2,19 @@ package main
 
 import (
 	"crypto/tls"
-	"golang.org/x/net/proxy"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
 )
 
 type tlsWrapContext struct {
 	wrapConfig *tlsWrapConfig
 	tlsConfig  tls.Config
-	dialer     proxy.Dialer
+	proxyUrl   *url.URL
 }
 
 func (c *tlsWrapContext) start() {
@@ -20,47 +24,58 @@ func (c *tlsWrapContext) start() {
 	}
 	log.Printf("info: listen on %s, hit CTRL-C to stop\n", c.wrapConfig.listen)
 
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Printf("error: accept() failed: %v\n", err)
-			continue
-		}
-		go c.handleConn(conn)
-	}
+	log.Fatal(http.Serve(listener, c))
 }
 
-func pipe(src, dst net.Conn) {
+func (c *tlsWrapContext) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
-		_ = src.Close()
-		_ = dst.Close()
+		_ = r.Body.Close()
 	}()
-	buff := make([]byte, 65535)
-	for {
-		n, err := src.Read(buff)
-		if err != nil {
-			log.Printf("error: failed to read from %s for %s: %v\n", src.RemoteAddr().String(), dst.RemoteAddr().String(), err)
-			return
-		}
-		b := buff[:n]
 
-		_, err = dst.Write(b)
-		if err != nil {
-			log.Printf("error: failed to write to %s for %s: %v\n", dst.RemoteAddr().String(), src.RemoteAddr().String(), err)
-			return
-		}
+	getProxyForRequest := func(*http.Request) (*url.URL, error) {
+		return c.proxyUrl, nil
 	}
-}
 
-func (c *tlsWrapContext) handleConn(conn net.Conn) {
-	log.Printf("info: accepted %s\n", conn.RemoteAddr().String())
-	rconn, err := c.dialer.Dial("tcp", c.wrapConfig.remote)
+	tr := http.Transport{
+		Proxy:                  getProxyForRequest,
+		TLSClientConfig:        &context.tlsConfig,
+		MaxIdleConns:       20,
+		IdleConnTimeout:    60 * time.Second,
+	}
+
+	r.Host = c.tlsConfig.ServerName
+	r.RemoteAddr = c.wrapConfig.remote
+	r.URL.Scheme = "https"
+	r.URL.Host = c.wrapConfig.remote
+	c.filterHeaders(r.Header, c.wrapConfig.listen, c.wrapConfig.serverName)
+
+	resp, err := tr.RoundTrip(r)
+
 	if err != nil {
-		log.Printf("error: failed to dial the remote %s\n", c.wrapConfig.remote)
-		_ = conn.Close()
+		w.WriteHeader(503)
+		log.Printf("error: failed to request the remote %s: %v\n", c.wrapConfig.remote, err)
 		return
 	}
-	tlsConn := tls.Client(rconn, &c.tlsConfig)
-	go pipe(conn, tlsConn)
-	go pipe(tlsConn, conn)
+
+	c.filterHeaders(resp.Header, c.wrapConfig.remote, c.wrapConfig.listen)
+	c.filterHeaders(resp.Header, c.wrapConfig.serverName, c.wrapConfig.listen)
+	copyHeader(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
+}
+
+func copyHeader(dst, src http.Header) {
+	for k, vv := range src {
+		for _, v := range vv {
+			dst.Add(k, v)
+		}
+	}
+}
+
+func (c *tlsWrapContext) filterHeaders(headers http.Header, src, dst string) {
+	for i, vi := range headers {
+		for j, vj := range vi {
+			headers[i][j] = strings.ReplaceAll(vj, src, dst)
+		}
+	}
 }
