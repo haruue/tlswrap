@@ -46,6 +46,9 @@ Usage of ./tlswrap:
         如果 -host 没有指定， 那么这个名称也会被用于 "Host:" 字段中。
   -host string
         服务名称， 用于 HTTP 头中的 "Host" 字段， 默认使用与 -sni 相同的名称。
+  -dns string
+        addr:port 使用的 DNS 服务器。
+                  在 Android 上， 必须指定此选项， 否则解析将无法工作。
   -mode string
         http/tunnel 两种模式， http 模式会重写 HTTP 头中各字段的内容， 不支持长连接。
                     tunnel 字段在建立连接之后即将数据原样传输， 支持长连接。
@@ -63,6 +66,7 @@ Usage of ./tlswrap:
         -remote ssl.example.com:22443 \
         -sni secret.example.com \
         -host secret.example.com:22443 \
+        -dns 1.1.1.1:53 \
         -mode http
 ```
 

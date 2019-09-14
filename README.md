@@ -40,6 +40,7 @@ Example:
         -remote ssl.example.com:22443 \
         -sni secret.example.com \
         -host secret.example.com:22443 \
+        -dns 1.1.1.1:53 \
         -mode http
 ```
 

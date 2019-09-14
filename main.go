@@ -1,12 +1,15 @@
 package main
 
 import (
+	gocontext "context"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
+	"time"
 )
 
 func init() {
@@ -27,6 +30,7 @@ func main() {
 	flag.StringVar(&config.rootCAPath, "ca", "", "CA certificate to verify peer against")
 	flag.StringVar(&config.clientCrtPath, "cert", "", "Client certificate file")
 	flag.StringVar(&config.clientKeyPath, "key", "", "Private key file name")
+	flag.StringVar(&config.dns, "dns", "", "addr:port DNS server to use, on Android, this should be set manually or the resolver won't work")
 	flag.Parse()
 
 	context.wrapConfig = &config
@@ -80,5 +84,23 @@ func main() {
 		}
 	}
 
+	context.dialer = net.Dialer{
+		Timeout:    30*time.Second,
+		KeepAlive:  30*time.Second,
+	}
+	if config.dns != "" {
+		fixDialerResolver(&context.dialer, config.dns)
+	}
+
 	context.start()
+}
+
+func fixDialerResolver(dialer *net.Dialer, dns string) {
+	dialer.Resolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx gocontext.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp", dns)
+		},
+	}
 }

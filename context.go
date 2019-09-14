@@ -13,6 +13,7 @@ import (
 type tlsWrapContext struct {
 	wrapConfig *tlsWrapConfig
 	tlsConfig  tls.Config
+	dialer net.Dialer
 }
 
 func (c *tlsWrapContext) start() {
@@ -66,6 +67,7 @@ func (c *tlsWrapContext) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		MaxIdleConns:       20,
 		IdleConnTimeout:    60 * time.Second,
 	}
+	tr.DialContext = c.dialer.DialContext
 
 	r.Host = c.wrapConfig.host
 	r.URL.Scheme = "https"
@@ -92,7 +94,7 @@ func (c *tlsWrapContext) handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (c *tlsWrapContext) handleConn(conn net.Conn) {
 	log.Printf("info: accepted %s\n", conn.RemoteAddr().String())
-	rconn, err := net.Dial("tcp", c.wrapConfig.remote)
+	rconn, err := c.dialer.Dial("tcp", c.wrapConfig.remote)
 	if err != nil {
 		log.Printf("error: failed to dial the remote %s\n", c.wrapConfig.remote)
 		_ = conn.Close()

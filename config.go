@@ -9,6 +9,7 @@ type tlsWrapConfig struct {
 	rootCAPath    string
 	clientCrtPath string
 	clientKeyPath string
+	dns           string
 }
 
 const (
