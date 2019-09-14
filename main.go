@@ -6,7 +6,6 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
-	"net/url"
 	"os"
 )
 
@@ -19,22 +18,34 @@ var context tlsWrapContext
 
 func main() {
 	config := tlsWrapConfig{}
+	flag.StringVar(&config.mode, "mode", "http", "http/tunnel The \"http\" mode will modify the HTTP headers to specified host, " +
+		"\"tunnel\" mode will open a long connection over TLS and transmit data as is")
 	flag.StringVar(&config.listen, "listen", "", "addr:port Local addr and port to listen")
 	flag.StringVar(&config.remote, "remote", "", "addr:port Remote server to connect")
 	flag.StringVar(&config.serverName, "sni", "", "Server name indication")
+	flag.StringVar(&config.host, "host", "", "Host name of the server used in the HTTP header, \"-sni\" will be used when unspecified, valid in \"http\" mode only")
 	flag.StringVar(&config.rootCAPath, "ca", "", "CA certificate to verify peer against")
 	flag.StringVar(&config.clientCrtPath, "cert", "", "Client certificate file")
 	flag.StringVar(&config.clientKeyPath, "key", "", "Private key file name")
-	flag.StringVar(&config.proxy, "proxy", "", "[protocol://]host[:port] Use this proxy")
 	flag.Parse()
 
 	context.wrapConfig = &config
 
+	if config.mode != modeHttp && config.mode != modeTunnel {
+		log.Fatalf("fatal: unknown mode: %s\n", config.mode)
+	}
 	if config.remote == "" {
 		log.Fatalf("fatal: no remote to connect\n")
 	}
 	if config.listen == "" {
 		log.Fatalf("fatal: no local addr to listen\n")
+	}
+	if config.host == "" {
+		config.host = config.serverName
+	} else {
+		if config.mode == "tunnel" {
+			log.Printf("warn: -host %s is ignored in tunnel mode, please use -sni if you meant to specify the server name indication\n", config.host)
+		}
 	}
 
 	context.tlsConfig.ServerName = config.serverName
@@ -67,14 +78,6 @@ func main() {
 		if config.clientKeyPath != "" {
 			log.Fatalf("fatal: client key specified without a certificate\n")
 		}
-	}
-
-	if config.proxy != "" {
-		proxyUrl, err := url.Parse(config.proxy)
-		if err != nil {
-			log.Fatalf("fatal: cannot parse proxy %s as a url: %v\n", config.proxy, err)
-		}
-		context.proxyUrl = proxyUrl
 	}
 
 	context.start()

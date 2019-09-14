@@ -1,3 +1,5 @@
 /.idea
 /out
 /tlswrap
+/tlswrap.*
+/mapping.txt
